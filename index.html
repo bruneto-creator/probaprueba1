@@ -16,19 +16,19 @@
     <main class="wrapper">
         <!-- Input Section -->
         <section class="panel">
-            <div class="panel-header">DATOS</div>
+            <div class="panel-header">ENTRADA DE DATOS</div>
             <div class="panel-body">
-                <textarea id="data-input" placeholder="Ingrese datos separados por comas..."></textarea>
+                <textarea id="data-input" placeholder="Ejemplo: 10, 20, 15, 30... (Mínimo 20 datos)"></textarea>
                 <div class="actions">
-                    <button id="process-btn" class="btn btn-cyan">PROCESAR</button>
-                    <button id="random-btn" class="btn btn-magenta">ALEATORIO</button>
-                    <button id="clear-btn" class="btn btn-outline">LIMPIAR</button>
+                    <button id="process-btn" class="btn btn-cyan">CALCULAR TODO</button>
+                    <button id="random-btn" class="btn btn-magenta">DATOS ALEATORIOS</button>
+                    <button id="clear-btn" class="btn btn-outline">RESETEAR</button>
                 </div>
                 <div id="status-log" class="log"></div>
             </div>
         </section>
 
-        <!-- Statistics Grid -->
+        <!-- Stats Grid -->
         <div class="stats-grid">
             <div class="stat-box"><label>MEDIA</label><span id="val-mean">-</span></div>
             <div class="stat-box"><label>MEDIANA</label><span id="val-median">-</span></div>
@@ -40,16 +40,16 @@
 
         <!-- Frequency Table -->
         <section class="panel">
-            <div class="panel-header">TABLA DE FRECUENCIAS (STURGES)</div>
+            <div class="panel-header">TABLA DE FRECUENCIAS (INTERVALOS)</div>
             <div class="table-container">
                 <table id="freq-table">
                     <thead>
                         <tr>
-                            <th>CLASE</th>
+                            <th>CLASE (INTERVALO)</th>
                             <th>fi</th>
-                            <th>fr (%)</th>
+                            <th>fr %</th>
                             <th>Fi</th>
-                            <th>Fr (%)</th>
+                            <th>Fr %</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -61,56 +61,72 @@
         <div class="charts-grid">
             <div class="panel chart-box">
                 <div class="panel-header">HISTOGRAMA Y POLÍGONO</div>
-                <canvas id="chart-hist-poly"></canvas>
+                <div class="canvas-wrapper"><canvas id="chart-hist-poly"></canvas></div>
             </div>
             <div class="panel chart-box">
-                <div class="panel-header">OJIVA</div>
-                <canvas id="chart-ogive"></canvas>
+                <div class="panel-header">OJIVA (FREC. ACUMULADA)</div>
+                <div class="canvas-wrapper"><canvas id="chart-ogive"></canvas></div>
             </div>
             <div class="panel chart-box full-width">
                 <div class="panel-header">DIAGRAMA DE PARETO</div>
-                <canvas id="chart-pareto"></canvas>
+                <div class="canvas-wrapper"><canvas id="chart-pareto"></canvas></div>
             </div>
         </div>
 
-        <!-- Probability Tools -->
+        <!-- Prob & Tool Grid -->
         <div class="tool-grid">
+            <!-- Conjuntos -->
             <section class="panel">
-                <div class="panel-header">CONJUNTOS</div>
+                <div class="panel-header">OPERACIONES DE CONJUNTOS</div>
                 <div class="tool-body">
-                    <input type="text" id="set-a" placeholder="Conjunto A (1,2,3)">
-                    <input type="text" id="set-b" placeholder="Conjunto B (3,4,5)">
+                    <input type="text" id="set-a" placeholder="Conjunto A: 1,2,3">
+                    <input type="text" id="set-b" placeholder="Conjunto B: 3,4,5">
                     <div class="actions">
-                        <button id="union-btn" class="btn-sm btn-cyan">UNIÓN</button>
-                        <button id="inter-btn" class="btn-sm btn-magenta">INTERSECCIÓN</button>
+                        <button id="union-btn" class="btn-sm btn-cyan">A ∪ B</button>
+                        <button id="inter-btn" class="btn-sm btn-magenta">A ∩ B</button>
                     </div>
-                    <div id="set-res" class="res-display"></div>
+                    <div id="set-res" class="res-display">Esperando datos...</div>
                 </div>
             </section>
 
+            <!-- Combinatoria -->
             <section class="panel">
-                <div class="panel-header">COMBINATORIA</div>
+                <div class="panel-header">PERMUTACIONES Y COMBINACIONES</div>
                 <div class="tool-body">
                     <div class="input-row">
-                        <input type="number" id="n-val" placeholder="n">
-                        <input type="number" id="r-val" placeholder="r">
+                        <input type="number" id="n-val" placeholder="n (total)">
+                        <input type="number" id="r-val" placeholder="r (muestra)">
                     </div>
                     <div class="actions">
                         <button id="perm-btn" class="btn-sm btn-cyan">nPr</button>
                         <button id="comb-btn" class="btn-sm btn-magenta">nCr</button>
                     </div>
-                    <div id="comb-res" class="res-display"></div>
+                    <div id="comb-res" class="res-display">Resultado: -</div>
                 </div>
             </section>
 
-            <section class="panel full-width">
+            <!-- Probabilidad Básica -->
+            <section class="panel">
+                <div class="panel-header">PROBABILIDAD BÁSICA (P = f/N)</div>
+                <div class="tool-body">
+                    <div class="input-row">
+                        <input type="number" id="prob-f" placeholder="Casos fav.">
+                        <input type="number" id="prob-N" placeholder="Casos tot.">
+                    </div>
+                    <button id="calc-prob-btn" class="btn btn-cyan" style="width:100%">CALCULAR P(E)</button>
+                    <div id="prob-res" class="res-display">P(E) = -</div>
+                </div>
+            </section>
+
+            <!-- Regla Multiplicativa -->
+            <section class="panel">
                 <div class="panel-header">REGLA MULTIPLICATIVA (ÁRBOL)</div>
                 <div class="tool-body">
                     <div class="input-row">
                         <input type="number" id="p-a" step="0.01" placeholder="P(A)">
                         <input type="number" id="p-b-a" step="0.01" placeholder="P(B|A)">
-                        <button id="tree-btn" class="btn btn-cyan">GENERAR</button>
                     </div>
+                    <button id="tree-btn" class="btn btn-magenta" style="width:100%">DIAGRAMA DE ÁRBOL</button>
                     <div id="tree-res" class="tree-display"></div>
                 </div>
             </section>

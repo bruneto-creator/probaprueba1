@@ -1,208 +1,254 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Estado global de la App
     const state = {
         data: [],
-        charts: {}
+        charts: {
+            hist: null,
+            ogive: null,
+            pareto: null
+        }
     };
 
-    // DOM References
-    const input = document.getElementById('data-input');
-    const log = document.getElementById('status-log');
-
-    // UI Updates
+    // --- UTILIDADES ---
     const setLog = (msg, isErr = false) => {
+        const log = document.getElementById('status-log');
         log.textContent = msg;
-        log.style.color = isErr ? 'var(--magenta)' : 'var(--cyan)';
+        log.style.color = isErr ? '#ff00ff' : '#00f3ff';
     };
 
-    // Statistical Engine
-    const calculateStats = (data) => {
+    // Factorial iterativo (seguro para n grandes)
+    const factorial = (n) => {
+        if (n < 0) return 0;
+        let res = 1;
+        for (let i = 2; i <= n; i++) res *= i;
+        return res;
+    };
+
+    // --- CÁLCULOS ESTADÍSTICOS ---
+    const processStats = () => {
+        const inputStr = document.getElementById('data-input').value;
+        const data = inputStr.split(',')
+            .map(n => parseFloat(n.trim()))
+            .filter(n => !isNaN(n))
+            .sort((a, b) => a - b);
+
+        if (data.length < 20) {
+            setLog('ERROR: SE REQUIEREN MÍNIMO 20 DATOS', true);
+            return;
+        }
+
+        state.data = data;
+        setLog(`SISTEMA OPERATIVO: ${data.length} DATOS CARGADOS`);
+
+        // Básicos
         const n = data.length;
+        const min = data[0];
+        const max = data[n - 1];
+        const range = max - min;
         const sum = data.reduce((a, b) => a + b, 0);
         const mean = sum / n;
         
-        const sorted = [...data].sort((a, b) => a - b);
-        const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
-        
-        const freq = {};
-        data.forEach(x => freq[x] = (freq[x] || 0) + 1);
-        let maxF = 0; let modes = [];
-        for (let k in freq) {
-            if (freq[k] > maxF) { maxF = freq[k]; modes = [k]; }
-            else if (freq[k] === maxF) modes.push(k);
-        }
-        
-        const min = sorted[0];
-        const max = sorted[n - 1];
+        // Mediana
+        const mid = Math.floor(n / 2);
+        const median = n % 2 !== 0 ? data[mid] : (data[mid - 1] + data[mid]) / 2;
 
+        // Moda
+        const freqMap = {};
+        data.forEach(x => freqMap[x] = (freqMap[x] || 0) + 1);
+        let maxF = 0; let modes = [];
+        for (let x in freqMap) {
+            if (freqMap[x] > maxF) { maxF = freqMap[x]; modes = [x]; }
+            else if (freqMap[x] === maxF) modes.push(x);
+        }
+
+        // Mostrar en UI
         document.getElementById('val-mean').textContent = mean.toFixed(2);
         document.getElementById('val-median').textContent = median.toFixed(2);
-        document.getElementById('val-mode').textContent = maxF > 1 ? modes.join(',') : 'N/A';
+        document.getElementById('val-mode').textContent = maxF > 1 ? modes.join(', ') : 'N/A';
         document.getElementById('val-min').textContent = min;
         document.getElementById('val-max').textContent = max;
-        document.getElementById('val-range').textContent = (max - min).toFixed(2);
+        document.getElementById('val-range').textContent = range.toFixed(2);
 
-        return { n, min, max, sorted };
+        // Tabla de Frecuencias (Sturges)
+        const k = Math.ceil(1 + 3.322 * Math.log10(n));
+        const amplitude = range / k;
+        const intervals = generateFrequencyTable(data, k, amplitude, n, min, max);
+        
+        // Renderizar Gráficas
+        renderCharts(intervals, n);
     };
 
-    const generateTable = (stats) => {
-        const { n, min, max, sorted } = stats;
-        const k = Math.ceil(1 + 3.322 * Math.log10(n)); // Sturges
-        const range = max - min;
-        const amplitude = range / k;
-        
+    const generateFrequencyTable = (data, k, amplitude, n, min, max) => {
         const tableBody = document.getElementById('table-body');
         tableBody.innerHTML = '';
-        
         const intervals = [];
-        let currentLower = min;
+        let currLimit = min;
         let Fi = 0;
 
         for (let i = 0; i < k; i++) {
-            const upper = i === k - 1 ? max : currentLower + amplitude;
-            const fi = sorted.filter(x => x >= currentLower && (i === k - 1 ? x <= upper : x < upper)).length;
+            const lower = currLimit;
+            const upper = (i === k - 1) ? max : currLimit + amplitude;
+            
+            // Frecuencia absoluta (fi)
+            const fi = data.filter(x => (i === k - 1) ? (x >= lower && x <= upper) : (x >= lower && x < upper)).length;
             const fr = (fi / n) * 100;
             Fi += fi;
             const Fr = (Fi / n) * 100;
 
-            intervals.push({ 
-                label: `${currentLower.toFixed(1)} - ${upper.toFixed(1)}`, 
-                fi, fr, Fi, Fr,
-                mid: (currentLower + upper) / 2
-            });
+            const label = `${lower.toFixed(1)} - ${upper.toFixed(1)}`;
+            intervals.push({ label, fi, fr, Fi, Fr });
 
-            tableBody.innerHTML += `<tr>
-                <td>${currentLower.toFixed(1)} - ${upper.toFixed(1)}</td>
-                <td>${fi}</td>
-                <td>${fr.toFixed(2)}%</td>
-                <td>${Fi}</td>
-                <td>${Fr.toFixed(2)}%</td>
-            </tr>`;
-            currentLower = upper;
+            tableBody.innerHTML += `
+                <tr>
+                    <td>${label}</td>
+                    <td>${fi}</td>
+                    <td>${fr.toFixed(2)}%</td>
+                    <td>${Fi}</td>
+                    <td>${Fr.toFixed(2)}%</td>
+                </tr>
+            `;
+            currLimit = upper;
         }
         return intervals;
     };
 
-    const initCharts = (intervals) => {
+    // --- GRÁFICAS (CHART.JS) ---
+    const renderCharts = (intervals, total) => {
         const labels = intervals.map(i => i.label);
         const fis = intervals.map(i => i.fi);
         const Fis = intervals.map(i => i.Fi);
 
-        if (state.charts.hist) Object.values(state.charts).forEach(c => c.destroy());
+        // Destruir previas si existen
+        Object.values(state.charts).forEach(c => c && c.destroy());
 
-        const baseOpts = {
+        const baseConfig = {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
             scales: {
-                x: { grid: { color: '#222' }, ticks: { color: '#666' } },
-                y: { grid: { color: '#222' }, ticks: { color: '#666' } }
-            }
+                x: { ticks: { color: '#888' }, grid: { color: '#222' } },
+                y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+            },
+            plugins: { legend: { display: false } }
         };
 
-        // Hist & Poly
+        // 1. Histograma y Polígono
         state.charts.hist = new Chart(document.getElementById('chart-hist-poly'), {
             type: 'bar',
             data: {
-                labels,
+                labels: labels,
                 datasets: [
-                    { label: 'fi', data: fis, backgroundColor: 'rgba(0, 243, 255, 0.3)', borderColor: '#00f3ff', borderWidth: 1 },
-                    { label: 'Polígono', data: fis, type: 'line', borderColor: '#ff00ff', tension: 0.4 }
+                    { label: 'fi', data: fis, backgroundColor: 'rgba(0, 243, 255, 0.4)', borderColor: '#00f3ff', borderWidth: 1 },
+                    { label: 'Polígono', data: fis, type: 'line', borderColor: '#ff00ff', tension: 0.4, borderWidth: 2 }
                 ]
             },
-            options: baseOpts
+            options: baseConfig
         });
 
-        // Ogive
+        // 2. Ojiva
         state.charts.ogive = new Chart(document.getElementById('chart-ogive'), {
             type: 'line',
             data: {
-                labels,
-                datasets: [{ data: Fis, borderColor: '#00f3ff', backgroundColor: 'rgba(0,243,255,0.1)', fill: true }]
+                labels: labels,
+                datasets: [{ data: Fis, borderColor: '#00f3ff', backgroundColor: 'rgba(0,243,255,0.1)', fill: true, tension: 0.3 }]
             },
-            options: baseOpts
+            options: baseConfig
         });
 
-        // Pareto
-        const sortedIntervals = [...intervals].sort((a, b) => b.fi - a.fi);
-        let accFr = 0;
-        const paretoAcc = sortedIntervals.map(i => {
-            accFr += i.fr;
-            return accFr;
+        // 3. Pareto
+        const paretoData = [...intervals].sort((a, b) => b.fi - a.fi);
+        let accum = 0;
+        const paretoAcc = paretoData.map(i => {
+            accum += i.fr;
+            return accum;
         });
 
         state.charts.pareto = new Chart(document.getElementById('chart-pareto'), {
             type: 'bar',
             data: {
-                labels: sortedIntervals.map(i => i.label),
+                labels: paretoData.map(i => i.label),
                 datasets: [
-                    { data: sortedIntervals.map(i => i.fi), backgroundColor: '#ff00ff' },
-                    { data: paretoAcc, type: 'line', borderColor: '#00f3ff', yAxisID: 'y2' }
+                    { data: paretoData.map(i => i.fi), backgroundColor: '#ff00ff' },
+                    { data: paretoAcc, type: 'line', borderColor: '#00f3ff', yAxisID: 'y2', pointRadius: 5 }
                 ]
             },
             options: {
-                ...baseOpts,
-                scales: { 
-                    ...baseOpts.scales, 
-                    y2: { position: 'right', max: 100, grid: { display: false } }
+                ...baseConfig,
+                scales: {
+                    ...baseConfig.scales,
+                    y2: { position: 'right', max: 100, ticks: { color: '#00f3ff' }, grid: { display: false } }
                 }
             }
         });
     };
 
-    // Event Listeners
-    document.getElementById('process-btn').onclick = () => {
-        const data = input.value.split(',').map(Number).filter(n => !isNaN(n));
-        if (data.length < 20) return setLog('MÍNIMO 20 DATOS REQUERIDOS', true);
-        
-        state.data = data;
-        setLog(`PROCESADOS ${data.length} DATOS`);
-        const stats = calculateStats(data);
-        const intervals = generateTable(stats);
-        initCharts(intervals);
-    };
+    // --- EVENTOS PRINCIPALES ---
+    document.getElementById('process-btn').onclick = processStats;
 
     document.getElementById('random-btn').onclick = () => {
-        const data = Array.from({ length: 25 }, () => Math.floor(Math.random() * 100));
-        input.value = data.join(', ');
-        document.getElementById('process-btn').click();
+        const count = 20 + Math.floor(Math.random() * 15);
+        const randData = Array.from({ length: count }, () => Math.floor(Math.random() * 100));
+        document.getElementById('data-input').value = randData.join(', ');
+        processStats();
     };
 
     document.getElementById('clear-btn').onclick = () => location.reload();
 
-    // Probability & Sets
-    const getSets = () => ({
-        a: new Set(document.getElementById('set-a').value.split(',').map(s => s.trim())),
-        b: new Set(document.getElementById('set-b').value.split(',').map(s => s.trim()))
-    });
+    // --- HERRAMIENTAS DE PROBABILIDAD ---
 
-    document.getElementById('union-btn').onclick = () => {
-        const { a, b } = getSets();
-        document.getElementById('set-res').textContent = `A ∪ B = { ${[...new Set([...a, ...b])].sort().join(', ')} }`;
+    // Conjuntos
+    const setOp = (type) => {
+        const a = document.getElementById('set-a').value.split(',').map(s => s.trim()).filter(s => s !== '');
+        const b = document.getElementById('set-b').value.split(',').map(s => s.trim()).filter(s => s !== '');
+        const resBox = document.getElementById('set-res');
+        
+        if (type === 'union') {
+            const res = [...new Set([...a, ...b])].sort();
+            resBox.textContent = `A ∪ B = { ${res.join(', ')} }`;
+        } else {
+            const res = a.filter(x => b.includes(x)).sort();
+            resBox.textContent = `A ∩ B = { ${res.join(', ')} }`;
+        }
     };
+    document.getElementById('union-btn').onclick = () => setOp('union');
+    document.getElementById('inter-btn').onclick = () => setOp('inter');
 
-    document.getElementById('inter-btn').onclick = () => {
-        const { a, b } = getSets();
-        document.getElementById('set-res').textContent = `A ∩ B = { ${[...a].filter(x => b.has(x)).sort().join(', ')} }`;
-    };
-
-    const fact = n => (n <= 1 ? 1 : n * fact(n - 1));
+    // Combinatoria
     document.getElementById('perm-btn').onclick = () => {
-        const n = +document.getElementById('n-val').value;
-        const r = +document.getElementById('r-val').value;
-        document.getElementById('comb-res').textContent = n < r ? 'n < r' : `P = ${fact(n) / fact(n - r)}`;
+        const n = parseInt(document.getElementById('n-val').value);
+        const r = parseInt(document.getElementById('r-val').value);
+        if (isNaN(n) || isNaN(r) || n < r) return;
+        const res = factorial(n) / factorial(n - r);
+        document.getElementById('comb-res').textContent = `P(${n},${r}) = ${res.toLocaleString()}`;
     };
 
     document.getElementById('comb-btn').onclick = () => {
-        const n = +document.getElementById('n-val').value;
-        const r = +document.getElementById('r-val').value;
-        document.getElementById('comb-res').textContent = n < r ? 'n < r' : `C = ${fact(n) / (fact(r) * fact(n - r))}`;
+        const n = parseInt(document.getElementById('n-val').value);
+        const r = parseInt(document.getElementById('r-val').value);
+        if (isNaN(n) || isNaN(r) || n < r) return;
+        const res = factorial(n) / (factorial(r) * factorial(n - r));
+        document.getElementById('comb-res').textContent = `C(${n},${r}) = ${res.toLocaleString()}`;
     };
 
+    // Probabilidad Básica
+    document.getElementById('calc-prob-btn').onclick = () => {
+        const f = parseFloat(document.getElementById('prob-f').value);
+        const N = parseFloat(document.getElementById('prob-N').value);
+        if (isNaN(f) || isNaN(N) || N === 0) return;
+        const p = (f / N);
+        document.getElementById('prob-res').textContent = `P(E) = ${p.toFixed(4)} (${(p * 100).toFixed(2)}%)`;
+    };
+
+    // Regla Multiplicativa (Árbol)
     document.getElementById('tree-btn').onclick = () => {
-        const pa = +document.getElementById('p-a').value;
-        const pba = +document.getElementById('p-b-a').value;
+        const pa = parseFloat(document.getElementById('p-a').value) || 0;
+        const pba = parseFloat(document.getElementById('p-b-a').value) || 0;
         const res = (pa * pba).toFixed(4);
+        
         document.getElementById('tree-res').textContent = 
-            `INICIO\n └── P(A): ${pa}\n      └── P(B|A): ${pba}  ──► P(A∩B): ${res}\n └── P(A'): ${(1-pa).toFixed(2)}`;
+`[INICIO]
+   ├── P(A) = ${pa.toFixed(2)}
+   │     └── P(B|A) = ${pba.toFixed(2)}  ──► P(A∩B) = ${res}
+   └── P(A') = ${(1 - pa).toFixed(2)}
+         └── P(B|A') = ?`;
     };
 });

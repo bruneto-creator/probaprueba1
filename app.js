@@ -1,297 +1,208 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Referencias DOM - Entrada y Datos
-    const rawDataInput = document.getElementById('raw-data');
-    const btnProcess = document.getElementById('btn-process');
-    const btnRandom = document.getElementById('btn-random');
-    const btnClear = document.getElementById('btn-clear');
-    const statusMsg = document.getElementById('data-status');
+    const state = {
+        data: [],
+        charts: {}
+    };
 
-    // Referencias DOM - Operaciones
-    const btnUnion = document.getElementById('btn-union');
-    const btnIntersection = document.getElementById('btn-intersection');
-    const btnDifference = document.getElementById('btn-difference');
-    const btnPerm = document.getElementById('btn-perm');
-    const btnComb = document.getElementById('btn-comb');
-    const btnTree = document.getElementById('btn-tree');
+    // DOM References
+    const input = document.getElementById('data-input');
+    const log = document.getElementById('status-log');
 
-    // Variables de Gráficas
-    let charts = {};
+    // UI Updates
+    const setLog = (msg, isErr = false) => {
+        log.textContent = msg;
+        log.style.color = isErr ? 'var(--magenta)' : 'var(--cyan)';
+    };
 
-    // 1. Generación de Datos Aleatorios
-    btnRandom.addEventListener('click', () => {
-        const count = 25 + Math.floor(Math.random() * 25);
-        const data = Array.from({ length: count }, () => Math.floor(Math.random() * 100));
-        rawDataInput.value = data.join(', ');
-        processData();
-    });
-
-    // 2. Limpiar Todo
-    btnClear.addEventListener('click', () => {
-        rawDataInput.value = '';
-        statusMsg.textContent = '';
-        ['mean', 'median', 'mode', 'range'].forEach(s => document.getElementById(`stat-${s}`).textContent = '-');
-        document.getElementById('table-body').innerHTML = '';
-        Object.values(charts).forEach(c => c.destroy());
-        charts = {};
-        document.getElementById('set-result').textContent = '';
-        document.getElementById('comb-result').textContent = '';
-        document.getElementById('tree-display').textContent = '';
-    });
-
-    // 3. Procesar Datos Principales
-    btnProcess.addEventListener('click', processData);
-
-    function processData() {
-        const input = rawDataInput.value;
-        const data = input.split(',')
-            .map(n => parseFloat(n.trim()))
-            .filter(n => !isNaN(n))
-            .sort((a, b) => a - b);
-
-        if (data.length < 20) {
-            statusMsg.textContent = "Error: Se requieren al menos 20 datos numéricos.";
-            statusMsg.style.color = "var(--neon-magenta)";
-            return;
-        }
-
-        statusMsg.textContent = `Éxito: ${data.length} datos procesados.`;
-        statusMsg.style.color = "var(--neon-green)";
-
-        calculateBasicStats(data);
-        const freqMap = generateFrequencyTable(data);
-        renderCharts(freqMap, data);
-    }
-
-    function calculateBasicStats(data) {
+    // Statistical Engine
+    const calculateStats = (data) => {
         const n = data.length;
         const sum = data.reduce((a, b) => a + b, 0);
         const mean = sum / n;
         
-        let median;
-        const mid = Math.floor(n / 2);
-        if (n % 2 === 0) median = (data[mid - 1] + data[mid]) / 2;
-        else median = data[mid];
-
-        const counts = {};
-        data.forEach(x => counts[x] = (counts[x] || 0) + 1);
-        let maxFreq = 0;
-        let modes = [];
-        for (let x in counts) {
-            if (counts[x] > maxFreq) {
-                maxFreq = counts[x];
-                modes = [x];
-            } else if (counts[x] === maxFreq) {
-                modes.push(x);
-            }
-        }
-        const modaText = maxFreq > 1 ? modes.join(', ') : 'No hay';
-
-        const min = data[0];
-        const max = data[n - 1];
-        const range = max - min;
-
-        document.getElementById('stat-mean').textContent = mean.toFixed(2);
-        document.getElementById('stat-median').textContent = median.toFixed(2);
-        document.getElementById('stat-mode').textContent = modaText;
-        document.getElementById('stat-range').textContent = range.toFixed(2);
-    }
-
-    function generateFrequencyTable(data) {
-        const counts = {};
-        data.forEach(x => counts[x] = (counts[x] || 0) + 1);
+        const sorted = [...data].sort((a, b) => a - b);
+        const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
         
-        const sortedKeys = Object.keys(counts).map(Number).sort((a, b) => a - b);
+        const freq = {};
+        data.forEach(x => freq[x] = (freq[x] || 0) + 1);
+        let maxF = 0; let modes = [];
+        for (let k in freq) {
+            if (freq[k] > maxF) { maxF = freq[k]; modes = [k]; }
+            else if (freq[k] === maxF) modes.push(k);
+        }
+        
+        const min = sorted[0];
+        const max = sorted[n - 1];
+
+        document.getElementById('val-mean').textContent = mean.toFixed(2);
+        document.getElementById('val-median').textContent = median.toFixed(2);
+        document.getElementById('val-mode').textContent = maxF > 1 ? modes.join(',') : 'N/A';
+        document.getElementById('val-min').textContent = min;
+        document.getElementById('val-max').textContent = max;
+        document.getElementById('val-range').textContent = (max - min).toFixed(2);
+
+        return { n, min, max, sorted };
+    };
+
+    const generateTable = (stats) => {
+        const { n, min, max, sorted } = stats;
+        const k = Math.ceil(1 + 3.322 * Math.log10(n)); // Sturges
+        const range = max - min;
+        const amplitude = range / k;
+        
         const tableBody = document.getElementById('table-body');
         tableBody.innerHTML = '';
-
+        
+        const intervals = [];
+        let currentLower = min;
         let Fi = 0;
-        const n = data.length;
-        const freqMap = [];
 
-        sortedKeys.forEach(x => {
-            const fi = counts[x];
+        for (let i = 0; i < k; i++) {
+            const upper = i === k - 1 ? max : currentLower + amplitude;
+            const fi = sorted.filter(x => x >= currentLower && (i === k - 1 ? x <= upper : x < upper)).length;
             const fr = (fi / n) * 100;
             Fi += fi;
             const Fr = (Fi / n) * 100;
 
-            freqMap.push({ x, fi, fr, Fi, Fr });
+            intervals.push({ 
+                label: `${currentLower.toFixed(1)} - ${upper.toFixed(1)}`, 
+                fi, fr, Fi, Fr,
+                mid: (currentLower + upper) / 2
+            });
 
-            const row = `<tr>
-                <td>${x}</td>
+            tableBody.innerHTML += `<tr>
+                <td>${currentLower.toFixed(1)} - ${upper.toFixed(1)}</td>
                 <td>${fi}</td>
                 <td>${fr.toFixed(2)}%</td>
                 <td>${Fi}</td>
                 <td>${Fr.toFixed(2)}%</td>
             </tr>`;
-            tableBody.innerHTML += row;
-        });
+            currentLower = upper;
+        }
+        return intervals;
+    };
 
-        return freqMap;
-    }
+    const initCharts = (intervals) => {
+        const labels = intervals.map(i => i.label);
+        const fis = intervals.map(i => i.fi);
+        const Fis = intervals.map(i => i.Fi);
 
-    function renderCharts(freqMap, rawData) {
-        const labels = freqMap.map(f => f.x);
-        const fis = freqMap.map(f => f.fi);
-        const Fis = freqMap.map(f => f.Fi);
+        if (state.charts.hist) Object.values(state.charts).forEach(c => c.destroy());
 
-        Object.values(charts).forEach(c => c.destroy());
-
-        // Configuración común para Gráficas
-        const chartOptions = {
+        const baseOpts = {
             responsive: true,
-            plugins: {
-                legend: { labels: { color: '#e0e0e0', font: { family: 'Orbitron' } } }
-            },
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
             scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#a0a0a0' } },
-                x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#a0a0a0' } }
+                x: { grid: { color: '#222' }, ticks: { color: '#666' } },
+                y: { grid: { color: '#222' }, ticks: { color: '#666' } }
             }
         };
 
-        // 1. Histograma y Polígono
-        charts.histo = new Chart(document.getElementById('histogramChart'), {
+        // Hist & Poly
+        state.charts.hist = new Chart(document.getElementById('chart-hist-poly'), {
             type: 'bar',
             data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Frecuencia Absoluta (fi)',
-                    data: fis,
-                    backgroundColor: 'rgba(0, 243, 255, 0.4)',
-                    borderColor: '#00f3ff',
-                    borderWidth: 2,
-                    order: 2
-                }, {
-                    label: 'Polígono de Frecuencias',
-                    data: fis,
-                    type: 'line',
-                    borderColor: '#ff00ff',
-                    borderWidth: 3,
-                    tension: 0.4,
-                    fill: false,
-                    order: 1
-                }]
+                labels,
+                datasets: [
+                    { label: 'fi', data: fis, backgroundColor: 'rgba(0, 243, 255, 0.3)', borderColor: '#00f3ff', borderWidth: 1 },
+                    { label: 'Polígono', data: fis, type: 'line', borderColor: '#ff00ff', tension: 0.4 }
+                ]
             },
-            options: chartOptions
+            options: baseOpts
         });
 
-        // 2. Ojiva
-        charts.ogive = new Chart(document.getElementById('ogiveChart'), {
+        // Ogive
+        state.charts.ogive = new Chart(document.getElementById('chart-ogive'), {
             type: 'line',
             data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Frecuencia Acumulada (Fi)',
-                    data: Fis,
-                    borderColor: '#39ff14',
-                    backgroundColor: 'rgba(57, 255, 20, 0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                labels,
+                datasets: [{ data: Fis, borderColor: '#00f3ff', backgroundColor: 'rgba(0,243,255,0.1)', fill: true }]
             },
-            options: chartOptions
+            options: baseOpts
         });
 
-        // 3. Pareto
-        const paretoData = [...freqMap].sort((a, b) => b.fi - a.fi);
-        let acc = 0;
-        const paretoAcc = paretoData.map(f => {
-            acc += (f.fi / rawData.length) * 100;
-            return acc;
+        // Pareto
+        const sortedIntervals = [...intervals].sort((a, b) => b.fi - a.fi);
+        let accFr = 0;
+        const paretoAcc = sortedIntervals.map(i => {
+            accFr += i.fr;
+            return accFr;
         });
 
-        charts.pareto = new Chart(document.getElementById('paretoChart'), {
+        state.charts.pareto = new Chart(document.getElementById('chart-pareto'), {
             type: 'bar',
             data: {
-                labels: paretoData.map(f => f.x),
-                datasets: [{
-                    label: 'fi',
-                    data: paretoData.map(f => f.fi),
-                    backgroundColor: '#ff00ff'
-                }, {
-                    label: '% Acumulado',
-                    data: paretoAcc,
-                    type: 'line',
-                    borderColor: '#00f3ff',
-                    yAxisID: 'y1'
-                }]
+                labels: sortedIntervals.map(i => i.label),
+                datasets: [
+                    { data: sortedIntervals.map(i => i.fi), backgroundColor: '#ff00ff' },
+                    { data: paretoAcc, type: 'line', borderColor: '#00f3ff', yAxisID: 'y2' }
+                ]
             },
             options: {
-                ...chartOptions,
-                scales: {
-                    ...chartOptions.scales,
-                    y1: { position: 'right', max: 100, ticks: { color: '#00f3ff' } }
+                ...baseOpts,
+                scales: { 
+                    ...baseOpts.scales, 
+                    y2: { position: 'right', max: 100, grid: { display: false } }
                 }
             }
         });
-    }
+    };
 
-    // --- Operaciones con Conjuntos ---
-    function getSets() {
-        const a = new Set(document.getElementById('set-a').value.split(',').map(s => s.trim()).filter(s => s !== ''));
-        const b = new Set(document.getElementById('set-b').value.split(',').map(s => s.trim()).filter(s => s !== ''));
-        return { a, b };
-    }
+    // Event Listeners
+    document.getElementById('process-btn').onclick = () => {
+        const data = input.value.split(',').map(Number).filter(n => !isNaN(n));
+        if (data.length < 20) return setLog('MÍNIMO 20 DATOS REQUERIDOS', true);
+        
+        state.data = data;
+        setLog(`PROCESADOS ${data.length} DATOS`);
+        const stats = calculateStats(data);
+        const intervals = generateTable(stats);
+        initCharts(intervals);
+    };
 
-    btnUnion.onclick = () => {
+    document.getElementById('random-btn').onclick = () => {
+        const data = Array.from({ length: 25 }, () => Math.floor(Math.random() * 100));
+        input.value = data.join(', ');
+        document.getElementById('process-btn').click();
+    };
+
+    document.getElementById('clear-btn').onclick = () => location.reload();
+
+    // Probability & Sets
+    const getSets = () => ({
+        a: new Set(document.getElementById('set-a').value.split(',').map(s => s.trim())),
+        b: new Set(document.getElementById('set-b').value.split(',').map(s => s.trim()))
+    });
+
+    document.getElementById('union-btn').onclick = () => {
         const { a, b } = getSets();
-        const result = [...new Set([...a, ...b])];
-        document.getElementById('set-result').textContent = `A ∪ B = { ${result.sort().join(', ')} }`;
+        document.getElementById('set-res').textContent = `A ∪ B = { ${[...new Set([...a, ...b])].sort().join(', ')} }`;
     };
 
-    btnIntersection.onclick = () => {
+    document.getElementById('inter-btn').onclick = () => {
         const { a, b } = getSets();
-        const result = [...a].filter(x => b.has(x));
-        document.getElementById('set-result').textContent = `A ∩ B = { ${result.sort().join(', ')} }`;
+        document.getElementById('set-res').textContent = `A ∩ B = { ${[...a].filter(x => b.has(x)).sort().join(', ')} }`;
     };
 
-    btnDifference.onclick = () => {
-        const { a, b } = getSets();
-        const result = [...a].filter(x => !b.has(x));
-        document.getElementById('set-result').textContent = `A - B = { ${result.sort().join(', ')} }`;
+    const fact = n => (n <= 1 ? 1 : n * fact(n - 1));
+    document.getElementById('perm-btn').onclick = () => {
+        const n = +document.getElementById('n-val').value;
+        const r = +document.getElementById('r-val').value;
+        document.getElementById('comb-res').textContent = n < r ? 'n < r' : `P = ${fact(n) / fact(n - r)}`;
     };
 
-    // --- Combinatoria ---
-    function factorial(n) {
-        if (n < 0) return 0;
-        if (n === 0) return 1;
-        let res = 1;
-        for (let i = 2; i <= n; i++) res *= i;
-        return res;
-    }
-
-    btnPerm.onclick = () => {
-        const n = parseInt(document.getElementById('calc-n').value);
-        const r = parseInt(document.getElementById('calc-r').value);
-        if (r > n) { document.getElementById('comb-result').textContent = "r > n!"; return; }
-        const res = factorial(n) / factorial(n - r);
-        document.getElementById('comb-result').textContent = `P(${n},${r}) = ${res.toLocaleString()}`;
+    document.getElementById('comb-btn').onclick = () => {
+        const n = +document.getElementById('n-val').value;
+        const r = +document.getElementById('r-val').value;
+        document.getElementById('comb-res').textContent = n < r ? 'n < r' : `C = ${fact(n) / (fact(r) * fact(n - r))}`;
     };
 
-    btnComb.onclick = () => {
-        const n = parseInt(document.getElementById('calc-n').value);
-        const r = parseInt(document.getElementById('calc-r').value);
-        if (r > n) { document.getElementById('comb-result').textContent = "r > n!"; return; }
-        const res = factorial(n) / (factorial(r) * factorial(n - r));
-        document.getElementById('comb-result').textContent = `C(${n},${r}) = ${res.toLocaleString()}`;
-    };
-
-    // --- Árbol de Probabilidad ---
-    btnTree.onclick = () => {
-        const pa = parseFloat(document.getElementById('prob-a').value) || 0;
-        const pba = parseFloat(document.getElementById('prob-b-given-a').value) || 0;
-        const pa_not = (1 - pa).toFixed(2);
-        const pba_not = (1 - pba).toFixed(2);
-        const intersection = (pa * pba).toFixed(4);
-
-        const tree = `
-INICIO
-├── (A) P(A) = ${pa}
-│   ├── (B|A) P(B|A) = ${pba}  ───► P(A∩B) = ${intersection}
-│   └── (B'|A) P(B'|A) = ${pba_not}
-└── (A') P(A') = ${pa_not}
-    ├── (B|A') P(B|A') = ?
-    └── (B'|A') P(B'|A') = ?
-        `;
-        document.getElementById('tree-display').textContent = tree;
+    document.getElementById('tree-btn').onclick = () => {
+        const pa = +document.getElementById('p-a').value;
+        const pba = +document.getElementById('p-b-a').value;
+        const res = (pa * pba).toFixed(4);
+        document.getElementById('tree-res').textContent = 
+            `INICIO\n └── P(A): ${pa}\n      └── P(B|A): ${pba}  ──► P(A∩B): ${res}\n └── P(A'): ${(1-pa).toFixed(2)}`;
     };
 });

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProbStat Neon | Web App de Estadística</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-overlay"></div>
+    
+    <header>
+        <div class="logo">
+            <i class="fas fa-chart-pie neon-text-cyan"></i>
+            <h1 class="neon-text-magenta">ProbStat <span class="neon-text-cyan">Neon</span></h1>
+        </div>
+        <p class="subtitle">Análisis Estadístico y Probabilidad Avanzada</p>
+    </header>
+
+    <main class="container">
+        <!-- Entrada de Datos -->
+        <section id="data-input" class="card neon-border-cyan">
+            <h2><i class="fas fa-edit"></i> Entrada de Datos</h2>
+            <div class="input-group">
+                <textarea id="raw-data" placeholder="Ingresa al menos 20 datos separados por comas (ej: 10, 15, 20...)"></textarea>
+                <div class="button-group">
+                    <button id="btn-process" class="btn btn-cyan">Procesar Datos</button>
+                    <button id="btn-random" class="btn btn-magenta">Generar Aleatorios (20+)</button>
+                    <button id="btn-clear" class="btn btn-outline">Limpiar</button>
+                </div>
+            </div>
+            <p id="data-status" class="status-msg"></p>
+        </section>
+
+        <!-- Estadísticos Básicos -->
+        <section id="statistics" class="grid-container">
+            <div class="card stat-card neon-border-green">
+                <h3>Media</h3>
+                <p id="stat-mean" class="stat-value">-</p>
+            </div>
+            <div class="card stat-card neon-border-green">
+                <h3>Mediana</h3>
+                <p id="stat-median" class="stat-value">-</p>
+            </div>
+            <div class="card stat-card neon-border-green">
+                <h3>Moda</h3>
+                <p id="stat-mode" class="stat-value">-</p>
+            </div>
+            <div class="card stat-card neon-border-green">
+                <h3>Rango</h3>
+                <p id="stat-range" class="stat-value">-</p>
+            </div>
+        </section>
+
+        <!-- Tabla de Frecuencias -->
+        <section id="frequency-table-section" class="card neon-border-magenta">
+            <h2><i class="fas fa-table"></i> Tabla de Frecuencias</h2>
+            <div class="table-responsive">
+                <table id="frequency-table">
+                    <thead>
+                        <tr>
+                            <th>Dato (x)</th>
+                            <th>fi</th>
+                            <th>fr (%)</th>
+                            <th>Fi</th>
+                            <th>Fr (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Dinámico -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Gráficas -->
+        <section id="charts-section" class="grid-charts">
+            <div class="card chart-container neon-border-cyan">
+                <h3>Histograma y Polígono</h3>
+                <canvas id="histogramChart"></canvas>
+            </div>
+            <div class="card chart-container neon-border-magenta">
+                <h3>Ojiva (Frec. Acumulada)</h3>
+                <canvas id="ogiveChart"></canvas>
+            </div>
+            <div class="card chart-container neon-border-green">
+                <h3>Diagrama de Pareto</h3>
+                <canvas id="paretoChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Probabilidad y Operaciones -->
+        <section id="advanced-stats" class="grid-container-2">
+            <!-- Conjuntos -->
+            <div class="card neon-border-cyan">
+                <h2><i class="fas fa-layer-group"></i> Operaciones con Conjuntos</h2>
+                <div class="set-inputs">
+                    <input type="text" id="set-a" placeholder="Conjunto A (ej: 1,2,3)">
+                    <input type="text" id="set-b" placeholder="Conjunto B (ej: 3,4,5)">
+                </div>
+                <div class="button-group-sm">
+                    <button id="btn-union" class="btn-sm btn-cyan">A ∪ B</button>
+                    <button id="btn-intersection" class="btn-sm btn-cyan">A ∩ B</button>
+                    <button id="btn-difference" class="btn-sm btn-cyan">A - B</button>
+                </div>
+                <div id="set-result" class="result-box"></div>
+            </div>
+
+            <!-- Calculadora Combinatoria -->
+            <div class="card neon-border-magenta">
+                <h2><i class="fas fa-calculator"></i> Permutaciones y Combinaciones</h2>
+                <div class="calc-inputs">
+                    <div class="field">
+                        <label>n:</label>
+                        <input type="number" id="calc-n" value="5">
+                    </div>
+                    <div class="field">
+                        <label>r:</label>
+                        <input type="number" id="calc-r" value="2">
+                    </div>
+                </div>
+                <div class="button-group-sm">
+                    <button id="btn-perm" class="btn-sm btn-magenta">Permutación (nPr)</button>
+                    <button id="btn-comb" class="btn-sm btn-magenta">Combinación (nCr)</button>
+                </div>
+                <div id="comb-result" class="result-box"></div>
+            </div>
+        </section>
+
+        <!-- Regla Multiplicativa y Diagrama de Árbol -->
+        <section id="multiplicative-rule" class="card neon-border-green">
+            <h2><i class="fas fa-tree"></i> Regla Multiplicativa y Diagrama de Árbol</h2>
+            <p>Calcula la probabilidad de eventos sucesivos P(A ∩ B) = P(A) * P(B|A)</p>
+            <div class="tree-container">
+                <div class="tree-inputs">
+                    <input type="number" id="prob-a" step="0.01" placeholder="P(A) e.g. 0.5">
+                    <input type="number" id="prob-b-given-a" step="0.01" placeholder="P(B|A) e.g. 0.3">
+                    <button id="btn-tree" class="btn btn-green">Visualizar Árbol</button>
+                </div>
+                <div id="tree-display" class="tree-visual">
+                    <!-- Representación visual dinámica -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 ProbStat Neon - Desarrollado con <i class="fas fa-heart neon-text-magenta"></i> para Estudiantes de Ingeniería</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

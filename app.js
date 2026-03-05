@@ -16,13 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
         log.style.color = isErr ? '#ff00ff' : '#00f3ff';
     };
 
-    // Factorial iterativo (seguro para n grandes)
-    const factorial = (n) => {
-        if (n < 0) return 0;
-        let res = 1;
-        for (let i = 2; i <= n; i++) res *= i;
-        return res;
-    };
+    // Función de redondeo estandarizada
+    const round = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
     // --- CÁLCULOS ESTADÍSTICOS ---
     const processStats = () => {
@@ -61,13 +56,13 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (freqMap[x] === maxF) modes.push(x);
         }
 
-        // Mostrar en UI
-        document.getElementById('val-mean').textContent = mean.toFixed(2);
-        document.getElementById('val-median').textContent = median.toFixed(2);
-        document.getElementById('val-mode').textContent = maxF > 1 ? modes.join(', ') : 'N/A';
-        document.getElementById('val-min').textContent = min;
-        document.getElementById('val-max').textContent = max;
-        document.getElementById('val-range').textContent = range.toFixed(2);
+        // Mostrar en UI con REDONDEO
+        document.getElementById('val-mean').textContent = round(mean).toFixed(2);
+        document.getElementById('val-median').textContent = round(median).toFixed(2);
+        document.getElementById('val-mode').textContent = maxF > 1 ? modes.map(m => round(parseFloat(m)).toFixed(2)).join(', ') : 'N/A';
+        document.getElementById('val-min').textContent = round(min).toFixed(2);
+        document.getElementById('val-max').textContent = round(max).toFixed(2);
+        document.getElementById('val-range').textContent = round(range).toFixed(2);
 
         // Tabla de Frecuencias (Sturges)
         const k = Math.ceil(1 + 3.322 * Math.log10(n));
@@ -95,16 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
             Fi += fi;
             const Fr = (Fi / n) * 100;
 
-            const label = `${lower.toFixed(1)} - ${upper.toFixed(1)}`;
+            const label = `${round(lower).toFixed(2)} - ${round(upper).toFixed(2)}`;
             intervals.push({ label, fi, fr, Fi, Fr });
 
             tableBody.innerHTML += `
                 <tr>
                     <td>${label}</td>
                     <td>${fi}</td>
-                    <td>${fr.toFixed(2)}%</td>
+                    <td>${round(fr).toFixed(2)}%</td>
                     <td>${Fi}</td>
-                    <td>${Fr.toFixed(2)}%</td>
+                    <td>${round(Fr).toFixed(2)}%</td>
                 </tr>
             `;
             currLimit = upper;
@@ -118,8 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const fis = intervals.map(i => i.fi);
         const Fis = intervals.map(i => i.Fi);
 
-        // Destruir previas si existen
-        Object.values(state.charts).forEach(c => c && c.destroy());
+        if (state.charts.hist) state.charts.hist.destroy();
+        if (state.charts.ogive) state.charts.ogive.destroy();
+        if (state.charts.pareto) state.charts.pareto.destroy();
 
         const baseConfig = {
             responsive: true,
@@ -131,7 +127,6 @@ document.addEventListener('DOMContentLoaded', () => {
             plugins: { legend: { display: false } }
         };
 
-        // 1. Histograma y Polígono
         state.charts.hist = new Chart(document.getElementById('chart-hist-poly'), {
             type: 'bar',
             data: {
@@ -144,7 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
             options: baseConfig
         });
 
-        // 2. Ojiva
         state.charts.ogive = new Chart(document.getElementById('chart-ogive'), {
             type: 'line',
             data: {
@@ -154,7 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
             options: baseConfig
         });
 
-        // 3. Pareto
         const paretoData = [...intervals].sort((a, b) => b.fi - a.fi);
         let accum = 0;
         const paretoAcc = paretoData.map(i => {
@@ -212,21 +205,42 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('union-btn').onclick = () => setOp('union');
     document.getElementById('inter-btn').onclick = () => setOp('inter');
 
-    // Combinatoria
+    // Combinatoria Robusta
+    const getNFactorialRatio = (n, k) => {
+        let res = 1;
+        for (let i = n; i > k; i--) res *= i;
+        return res;
+    };
+
+    const factorial = (n) => {
+        if (n <= 1) return 1;
+        let res = 1;
+        for (let i = 2; i <= n; i++) res *= i;
+        return res;
+    };
+
     document.getElementById('perm-btn').onclick = () => {
         const n = parseInt(document.getElementById('n-val').value);
         const r = parseInt(document.getElementById('r-val').value);
-        if (isNaN(n) || isNaN(r) || n < r) return;
-        const res = factorial(n) / factorial(n - r);
+        if (isNaN(n) || isNaN(r) || n < r || n < 0 || r < 0) {
+            document.getElementById('comb-res').textContent = "Error: n ≥ r ≥ 0";
+            return;
+        }
+        const res = getNFactorialRatio(n, n - r);
         document.getElementById('comb-res').textContent = `P(${n},${r}) = ${res.toLocaleString()}`;
     };
 
     document.getElementById('comb-btn').onclick = () => {
         const n = parseInt(document.getElementById('n-val').value);
         const r = parseInt(document.getElementById('r-val').value);
-        if (isNaN(n) || isNaN(r) || n < r) return;
-        const res = factorial(n) / (factorial(r) * factorial(n - r));
-        document.getElementById('comb-res').textContent = `C(${n},${r}) = ${res.toLocaleString()}`;
+        if (isNaN(n) || isNaN(r) || n < r || n < 0 || r < 0) {
+            document.getElementById('comb-res').textContent = "Error: n ≥ r ≥ 0";
+            return;
+        }
+        // Optimización nCr para evitar desbordamiento: nCr(n, r) = nCr(n, n-r)
+        const realR = r > n / 2 ? n - r : r;
+        const res = getNFactorialRatio(n, n - realR) / factorial(realR);
+        document.getElementById('comb-res').textContent = `C(${n},${r}) = ${Math.round(res).toLocaleString()}`;
     };
 
     // Probabilidad Básica
@@ -235,20 +249,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const N = parseFloat(document.getElementById('prob-N').value);
         if (isNaN(f) || isNaN(N) || N === 0) return;
         const p = (f / N);
-        document.getElementById('prob-res').textContent = `P(E) = ${p.toFixed(4)} (${(p * 100).toFixed(2)}%)`;
+        document.getElementById('prob-res').textContent = `P(E) = ${round(p).toFixed(4)} (${round(p * 100).toFixed(2)}%)`;
     };
 
     // Regla Multiplicativa (Árbol)
     document.getElementById('tree-btn').onclick = () => {
         const pa = parseFloat(document.getElementById('p-a').value) || 0;
         const pba = parseFloat(document.getElementById('p-b-a').value) || 0;
-        const res = (pa * pba).toFixed(4);
+        const res = round(pa * pba);
         
         document.getElementById('tree-res').textContent = 
 `[INICIO]
-   ├── P(A) = ${pa.toFixed(2)}
-   │     └── P(B|A) = ${pba.toFixed(2)}  ──► P(A∩B) = ${res}
-   └── P(A') = ${(1 - pa).toFixed(2)}
+   ├── P(A) = ${round(pa).toFixed(2)}
+   │     └── P(B|A) = ${round(pba).toFixed(2)}  ──► P(A∩B) = ${res.toFixed(4)}
+   └── P(A') = ${round(1 - pa).toFixed(2)}
          └── P(B|A') = ?`;
     };
 });

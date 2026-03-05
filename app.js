@@ -188,19 +188,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- HERRAMIENTAS DE PROBABILIDAD ---
 
-    // Conjuntos
+    // Conjuntos (Refactorizado para robustez)
     const setOp = (type) => {
-        const a = document.getElementById('set-a').value.split(',').map(s => s.trim()).filter(s => s !== '');
-        const b = document.getElementById('set-b').value.split(',').map(s => s.trim()).filter(s => s !== '');
+        const parseSet = (id) => {
+            const val = document.getElementById(id).value;
+            return [...new Set(val.split(',').map(s => s.trim()).filter(s => s !== ''))];
+        };
+
+        const a = parseSet('set-a');
+        const b = parseSet('set-b');
         const resBox = document.getElementById('set-res');
         
+        let res = [];
         if (type === 'union') {
-            const res = [...new Set([...a, ...b])].sort();
-            resBox.textContent = `A ∪ B = { ${res.join(', ')} }`;
+            res = [...new Set([...a, ...b])];
         } else {
-            const res = a.filter(x => b.includes(x)).sort();
-            resBox.textContent = `A ∩ B = { ${res.join(', ')} }`;
+            const setB = new Set(b);
+            res = a.filter(x => setB.has(x));
         }
+
+        // Ordenamiento inteligente (numérico si es posible)
+        res.sort((x, y) => {
+            const nx = parseFloat(x), ny = parseFloat(y);
+            return (!isNaN(nx) && !isNaN(ny)) ? nx - ny : x.toString().localeCompare(y.toString());
+        });
+
+        const symbol = type === 'union' ? '∪' : '∩';
+        resBox.textContent = `A ${symbol} B = { ${res.length > 0 ? res.join(', ') : '∅'} }`;
     };
     document.getElementById('union-btn').onclick = () => setOp('union');
     document.getElementById('inter-btn').onclick = () => setOp('inter');
